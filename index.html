@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Yazma Eserler Haritası</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;0,7..72,600;1,7..72,400&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a narrow atlas column on the left (map), a wide reading column on the right (catalogue).
+   Palette borrowed from the manuscript page: lapis for structure, gold for the selected thing, surh (rubric red) for labels. */
+:root{
+  --paper:#f1f2ef; --surface:#ffffff; --ink:#172033; --muted:#596274; --line:#d8dbd4;
+  --lapis:#1f3f8f; --lapis-soft:#e4e9f6; --gold:#9a6c1c; --gold-soft:#f3e7c9; --surh:#a3312a;
+  --sea:#dde5e9; --land:#f6f6f2; --land-line:#c3c8c0; --tr:#d3dcf2; --tr-line:#8a9fd2;
+  --display:"Literata", Georgia, "Times New Roman", serif;
+  --body:"IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mapw:30%;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0e1524; --surface:#161f33; --ink:#e8ebf2; --muted:#9ba6bb; --line:#2a3550;
+    --lapis:#93b2ff; --lapis-soft:#1c2948; --gold:#dcae5a; --gold-soft:#3a2f17; --surh:#f09487;
+    --sea:#0a101d; --land:#182136; --land-line:#2e3a57; --tr:#22335a; --tr-line:#5a76ba;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0e1524; --surface:#161f33; --ink:#e8ebf2; --muted:#9ba6bb; --line:#2a3550;
+  --lapis:#93b2ff; --lapis-soft:#1c2948; --gold:#dcae5a; --gold-soft:#3a2f17; --surh:#f09487;
+  --sea:#0a101d; --land:#182136; --land-line:#2e3a57; --tr:#22335a; --tr-line:#5a76ba;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55;
+  display:flex;flex-direction:column;overflow:hidden;-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit}
+a{color:var(--lapis)}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:3px}
+
+/* ---------- top bar ---------- */
+.bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:10px 18px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:baseline;gap:10px;min-width:0;text-decoration:none;color:var(--ink)}
+.brand b{font-family:var(--display);font-weight:600;font-size:19px;letter-spacing:-.01em;white-space:nowrap}
+.brand span{font-size:12px;color:var(--surh);letter-spacing:.08em;text-transform:uppercase;font-weight:600}
+.lang{display:flex;border:1px solid var(--line);border-radius:999px;padding:2px;background:var(--paper)}
+.lang button{border:0;background:transparent;padding:5px 14px;border-radius:999px;cursor:pointer;font-weight:600;font-size:13px;color:var(--muted)}
+.lang button[aria-pressed="true"]{background:var(--lapis);color:var(--surface)}
+
+/* ---------- split ---------- */
+.split{flex:1;min-height:0;display:grid;grid-template-columns:var(--mapw) 9px minmax(0,1fr)}
+.mapcol{position:relative;min-width:0;min-height:0;background:var(--sea);overflow:hidden}
+.grip{cursor:col-resize;background:var(--surface);border-left:1px solid var(--line);border-right:1px solid var(--line);position:relative;touch-action:none}
+.grip::after{content:"";position:absolute;left:50%;top:50%;width:3px;height:34px;margin:-17px 0 0 -1.5px;border-radius:2px;background:var(--line)}
+.grip:hover::after,.grip.drag::after{background:var(--lapis)}
+.panel{min-width:0;min-height:0;overflow-y:auto;overflow-x:hidden;scroll-behavior:smooth}
+.wrap{max-width:960px;margin:0 auto;padding:28px clamp(16px,3.2vw,40px) 56px}
+
+/* ---------- map ---------- */
+#map{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+#map:active{cursor:grabbing}
+.c{fill:var(--land);stroke:var(--land-line);stroke-width:.6;vector-effect:non-scaling-stroke}
+.p{fill:var(--tr);stroke:var(--tr-line);stroke-width:.5;vector-effect:non-scaling-stroke}
+.p:hover{fill:var(--lapis-soft)}
+.pin{cursor:pointer}
+.pin circle.dot{fill:var(--lapis);stroke:var(--surface);stroke-width:2}
+.pin.has circle.dot{fill:var(--lapis)}
+.pin.none circle.dot{fill:var(--surface);stroke:var(--lapis);stroke-width:2.5}
+.pin.cluster circle.dot{fill:var(--ink);stroke:var(--surface)}
+.pin.sel circle.ring{stroke:var(--gold);opacity:1}
+.pin circle.ring{fill:none;stroke-width:3;opacity:0}
+.pin text.n{fill:var(--surface);font:600 11px var(--body);text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.fan line{stroke:var(--muted);stroke-width:.9}
+.fan circle{fill:var(--ink)}
+.pin text.lb{font:500 11.5px var(--body);fill:var(--ink);paint-order:stroke;stroke:var(--land);stroke-width:3.5;stroke-linejoin:round;pointer-events:none}
+.pin.sel text.lb{font-weight:600}
+.mapctl{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}
+.mapctl button{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-size:17px;line-height:1;display:grid;place-items:center;font-weight:600}
+.mapctl button.txt{font-size:10.5px;letter-spacing:.04em}
+.mapctl svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.5}
+.mapctl button:hover{border-color:var(--lapis);color:var(--lapis)}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12px;padding:4px 8px;border-radius:6px;white-space:nowrap;transform:translate(-50%,-140%);opacity:0;transition:opacity .12s}
+.tip.on{opacity:1}
+.credit{position:absolute;left:8px;bottom:6px;font-size:10.5px;color:var(--muted);background:color-mix(in srgb,var(--surface) 78%,transparent);padding:1px 6px;border-radius:4px}
+.legend{position:absolute;left:8px;top:10px;display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);background:color-mix(in srgb,var(--surface) 84%,transparent);padding:6px 8px;border-radius:8px;max-width:calc(100% - 64px)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px;background:var(--lapis);border:2px solid var(--surface);box-shadow:0 0 0 1px var(--line)}
+.legend i.o{background:var(--surface);border-color:var(--lapis);box-shadow:none}
+.mapfail{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted)}
+
+/* ---------- reading column ---------- */
+.eyebrow{font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--surh);margin:0 0 8px}
+h1{font-family:var(--display);font-weight:600;font-size:clamp(26px,3.1vw,38px);line-height:1.12;letter-spacing:-.015em;margin:0 0 12px;text-wrap:balance}
+h2{font-family:var(--display);font-weight:600;font-size:20px;line-height:1.25;margin:34px 0 12px;text-wrap:balance}
+.lede{font-size:16.5px;color:var(--muted);max-width:62ch;margin:0}
+.orig{font-size:22px;color:var(--muted);margin:-4px 0 12px;direction:rtl;text-align:left;unicode-bidi:plaintext}
+.stats{display:flex;flex-wrap:wrap;gap:8px 22px;margin:20px 0 0;padding:14px 0 0;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted)}
+.stats b{font-family:var(--display);font-size:22px;font-weight:600;color:var(--ink);margin-right:6px;font-variant-numeric:tabular-nums}
+.back{display:inline-flex;align-items:center;gap:6px;font-size:13.5px;font-weight:500;text-decoration:none;margin:0 0 18px;color:var(--lapis)}
+.back:hover{text-decoration:underline}
+
+.tools{display:flex;flex-direction:column;gap:10px;margin:0 0 14px}
+.tools input{width:100%;max-width:460px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);font:inherit}
+.tools input::placeholder{color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:13px;cursor:pointer;color:var(--ink)}
+.chip small{color:var(--muted);margin-left:4px;font-variant-numeric:tabular-nums}
+.chip[aria-pressed="true"]{background:var(--lapis);border-color:var(--lapis);color:var(--surface)}
+.chip[aria-pressed="true"] small{color:inherit;opacity:.8}
+
+/* work cards */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+.wcard{display:flex;flex-direction:column;gap:9px;text-decoration:none;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;min-width:0}
+.wcard:hover{border-color:var(--lapis)}
+.wcard .pl{align-self:center;width:100%;max-width:132px}
+.wcard b{font-family:var(--display);font-weight:600;font-size:15px;line-height:1.25;overflow-wrap:anywhere}
+.wcard span{font-size:12.5px;color:var(--muted);line-height:1.35;overflow-wrap:anywhere}
+.badge{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;font-size:11px;font-weight:600;letter-spacing:.03em;color:var(--gold);background:var(--gold-soft);border-radius:999px;padding:2px 8px}
+.plate{display:block;width:100%;height:auto;border-radius:4px;box-shadow:0 1px 0 rgba(0,0,0,.15),0 6px 16px -8px rgba(0,0,0,.45)}
+
+/* library rows */
+.citygroup{margin:22px 0 0}
+.citygroup h3{font:600 12px var(--body);letter-spacing:.09em;text-transform:uppercase;color:var(--surh);margin:0 0 6px;display:flex;gap:8px;align-items:baseline}
+.citygroup h3 small{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+.rows{border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 16px;align-items:baseline;padding:11px 4px;border-bottom:1px solid var(--line);text-decoration:none;color:inherit}
+.row:hover{background:var(--surface)}
+.row b{font-family:var(--display);font-weight:600;font-size:16px;overflow-wrap:anywhere}
+.row .meta{font-size:12.5px;color:var(--muted);white-space:nowrap}
+.row .meta em{font-style:normal;color:var(--lapis);font-weight:600}
+.row p{grid-column:1/-1;margin:0;font-size:13.5px;color:var(--muted);max-width:76ch;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+
+/* detail pages */
+.facts{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:7px 18px;margin:18px 0 0;padding:14px 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;font-size:14px}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0;overflow-wrap:anywhere}
+.facts dd small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.shelf{font-family:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;font-size:13px;background:var(--lapis-soft);color:var(--ink);padding:1px 7px;border-radius:5px}
+.prose{font-family:var(--display);font-size:17px;line-height:1.62;max-width:64ch;margin:16px 0 0}
+.prose p{margin:0 0 12px}
+.detail{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:start}
+.detail figure{margin:0;position:sticky;top:8px}
+.detail figcaption{font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.35}
+h2.rub{font-family:var(--body);font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--surh);margin:26px 0 0}
+.srcs{margin:8px 0 0;padding:0 0 0 18px;font-size:13.5px;color:var(--muted)}
+.srcs li{margin:3px 0;overflow-wrap:anywhere}
+.empty{padding:16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:14px}
+.about{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);font-size:13.5px;color:var(--muted);max-width:74ch}
+.about h2{font-size:15px;margin:0 0 6px;color:var(--ink)}
+
+@media (max-width:820px){
+  body{overflow:auto;display:block}
+  html,body{height:auto}
+  .split{display:block}
+  .mapcol{height:44vh;min-height:260px;position:sticky;top:0;z-index:2;border-bottom:1px solid var(--line)}
+  .grip{display:none}
+  .panel{overflow:visible}
+  .detail{grid-template-columns:1fr}
+  .detail figure{position:static;max-width:170px}
+  .row{grid-template-columns:1fr}
+  .row .meta{white-space:normal}
+}
+@media (prefers-reduced-motion:reduce){.panel{scroll-behavior:auto}.tip{transition:none}}
+</style>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#" id="brand"><b id="brandName"></b><span id="brandTag"></span></a>
+  <div class="lang" id="lang" role="group"></div>
+</header>
+<main class="split" id="split">
+  <section class="mapcol" id="mapcol">
+    <svg id="map" role="application"></svg>
+    <div class="legend" id="legend"></div>
+    <div class="mapctl" id="mapctl"></div>
+    <div class="tip" id="tip"></div>
+    <div class="credit" id="credit"></div>
+  </section>
+  <div class="grip" id="grip" role="separator" aria-orientation="vertical" tabindex="0"></div>
+  <section class="panel" id="panel"><div class="wrap" id="view"></div></section>
+</main>
+
+<script src="harita.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="veri.js"></script>
+<script>
+
+/* ============================ uygulama ============================ */
+(function(){
+"use strict";
+const $ = s => document.querySelector(s);
+const store = { get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} } };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+let lang = LANGS[store.get("yeh-lang")] ? store.get("yeh-lang") : "tr";
+const L = o => o == null ? "" : (typeof o === "string" ? o : (o[lang] ?? o.en ?? o.tr ?? ""));
+const T = k => L(UI[k]);
+const libById = Object.fromEntries(LIBRARIES.map(l => [l.id, l]));
+const workById = Object.fromEntries(WORKS.map(w => [w.id, w]));
+const worksOf = id => WORKS.filter(w => w.lib === id);
+const fmt = n => n.toLocaleString(lang === "tr" ? "tr-TR" : "en-US");
+const norm = s => s.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/ı/g,"i");
+const state = { q:"", city:null };
+
+/* ---------- temsilî görseller (SVG) ---------- */
+const TONES = { visne:"#6b1f2b", lacivert:"#1b2e5c", yesil:"#1e4a3b", kahve:"#5b3a22", siyah:"#24242c" };
+const GOLD = "#cda64f";
+function hash(s){ let h=2166136261; for(const c of s){ h^=c.charCodeAt(0); h=Math.imul(h,16777619); } return h>>>0; }
+function plate(w){
+  const tone = TONES[w.tone] || TONES.lacivert, h = hash(w.id);
+  let inner = "";
+  if(w.type === "harita"){
+    const cx = 34 + h%18, cy = 58 + (h>>4)%20, cx2 = 82 + (h>>8)%14, cy2 = 108 + (h>>12)%18;
+    const rays = (x,y,col,n) => Array.from({length:n},(_,i)=>{ const a=i*Math.PI*2/n; return `<line x1="${x}" y1="${y}" x2="${(x+Math.cos(a)*220).toFixed(1)}" y2="${(y+Math.sin(a)*220).toFixed(1)}" stroke="${col}" stroke-width=".45" opacity=".55"/>`; }).join("");
+    const rose = (x,y,r) => { let p=""; for(let i=0;i<16;i++){ const a=i*Math.PI/8-Math.PI/2, rr=i%2?r*.38:(i%4?r*.7:r); p+=(i?"L":"M")+(x+Math.cos(a)*rr).toFixed(1)+" "+(y+Math.sin(a)*rr).toFixed(1); } return `<path d="${p}Z" fill="${tone}" stroke="#3b2a14" stroke-width=".5"/><circle cx="${x}" cy="${y}" r="${(r*.16).toFixed(1)}" fill="${GOLD}"/>`; };
+    inner = `<rect width="120" height="160" fill="#e7d7ad"/><g clip-path="url(#cl-${w.id})">${rays(cx,cy,"#6b4a22",16)}${rays(cx2,cy2,"#8a2f25",16)}
+      <path d="M-5 ${118+(h%14)} C 20 ${96+(h%9)}, 38 ${132-(h%11)}, 62 ${120} S 100 ${92+(h%13)}, 126 ${104}" fill="none" stroke="#2f4a3a" stroke-width="1.3"/>
+      <path d="M-5 ${30+(h%10)} C 30 ${44}, 52 ${18+(h%8)}, 80 ${34} S 110 ${26}, 126 ${40}" fill="none" stroke="#2f4a3a" stroke-width="1.1"/></g>
+      ${rose(cx,cy,15)}${rose(cx2,cy2,9)}
+      <rect x="5" y="5" width="110" height="150" fill="none" stroke="#6b4a22" stroke-width="1.2"/><rect x="8" y="8" width="104" height="144" fill="none" stroke="#6b4a22" stroke-width=".4"/>`;
+  } else if(w.type === "koleksiyon"){
+    const cols = Object.values(TONES); let x = 12, sp = "";
+    for(let i=0;i<7;i++){ const wd = 11 + ((h>>(i*3))%5), ht = 96 + ((h>>(i*2))%34), c = cols[(i+h)%cols.length];
+      sp += `<g><rect x="${x}" y="${142-ht}" width="${wd}" height="${ht}" rx="1.5" fill="${c}"/><rect x="${x}" y="${142-ht+12}" width="${wd}" height="1.6" fill="${GOLD}"/><rect x="${x}" y="${142-ht+17}" width="${wd}" height=".8" fill="${GOLD}"/><rect x="${x}" y="${130}" width="${wd}" height="1.6" fill="${GOLD}"/><rect x="${x+wd/2-2}" y="${142-ht+30}" width="4" height="${Math.max(10,ht*.3)}" rx="2" fill="${GOLD}" opacity=".55"/></g>`;
+      x += wd + 2; if(x > 100) break; }
+    inner = `<rect width="120" height="160" fill="#ece6d6"/><rect x="6" y="142" width="108" height="5" fill="#8a6a3c"/><rect x="6" y="147" width="108" height="2" fill="#5b4526"/>${sp}`;
+  } else {
+    const n = 10 + (h%3)*2, a = 16 + (h>>5)%4, b = 27 + (h>>9)%5; let p = "", p2 = "";
+    for(let i=0;i<=120;i++){ const t=i/120*Math.PI*2, r=1+.07*Math.cos(n*t), k=1+.14*Math.pow(Math.abs(Math.cos(t)),7);
+      p += (i?"L":"M")+(60+a*r*Math.sin(t)).toFixed(2)+" "+(80+b*r*k*Math.cos(t)).toFixed(2);
+      p2 += (i?"L":"M")+(60+a*.62*r*Math.sin(t)).toFixed(2)+" "+(80+b*.62*r*k*Math.cos(t)).toFixed(2); }
+    const corner = `<path d="M11 40 Q21 35 24 25 Q33 22 38 11 L11 11Z" fill="${GOLD}" opacity=".88"/><path d="M14 31 Q19 28 21 22 Q26 20 30 14 L14 14Z" fill="${tone}"/>`;
+    const sal = y => `<path d="M60 ${y-7} Q64 ${y} 60 ${y+7} Q56 ${y} 60 ${y-7}Z" fill="${GOLD}"/>`;
+    inner = `<rect width="120" height="160" fill="${tone}"/><rect width="120" height="160" fill="url(#gr-${w.id})"/>
+      <rect x="7" y="7" width="106" height="146" fill="none" stroke="${GOLD}" stroke-width="1.3"/><rect x="11" y="11" width="98" height="138" fill="none" stroke="${GOLD}" stroke-width=".5"/>
+      ${corner}<g transform="translate(120,0) scale(-1,1)">${corner}</g><g transform="translate(0,160) scale(1,-1)">${corner}</g><g transform="translate(120,160) scale(-1,-1)">${corner}</g>
+      <path d="${p}Z" fill="${GOLD}"/><path d="${p2}Z" fill="${tone}" stroke="${GOLD}" stroke-width=".5"/><circle cx="60" cy="80" r="2.2" fill="${GOLD}"/>
+      ${sal(80-b-13)}${sal(80+b+13)}`;
+  }
+  return `<svg class="plate" viewBox="0 0 120 160" role="img" aria-label="${esc(T("plateNote"))}"><defs><clipPath id="cl-${w.id}"><rect x="8" y="8" width="104" height="144"/></clipPath><linearGradient id="gr-${w.id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".22"/></linearGradient></defs>${inner}</svg>`;
+}
+
+/* ---------- görünümler ---------- */
+function workCard(w){
+  const lib = libById[w.lib];
+  return `<a class="wcard" href="#work-${w.id}"><div class="pl">${plate(w)}</div>
+    ${w.unesco ? `<i class="badge" style="font-style:normal">UNESCO ${w.unesco}</i>` : ""}
+    <b>${esc(L(w.title))}</b><span>${esc(L(w.author))}</span><span>${esc(L(lib.short))} · ${esc(L(lib.city))}</span></a>`;
+}
+function srcList(list){
+  return `<h2 class="rub">${T("sources")}</h2><ul class="srcs">${list.map(s => `<li><a href="${esc(s.u)}" target="_blank" rel="noopener">${esc(s.t)}</a></li>`).join("")}</ul>`;
+}
+function matches(l){
+  if(state.city && l.city.tr !== state.city) return false;
+  if(!state.q) return true;
+  const q = norm(state.q);
+  const hay = [l.name.tr,l.name.en,l.city.tr,l.city.en,l.founder?l.founder.tr:"",
+    ...worksOf(l.id).flatMap(w => [w.title.tr,w.title.en,w.author.tr,w.author.en,w.shelf])].join(" ");
+  return norm(hay).includes(q);
+}
+function listHtml(){
+  const libs = LIBRARIES.filter(matches);
+  if(!libs.length) return `<div class="empty">${T("noResult")}</div>`;
+  const groups = new Map();
+  libs.forEach(l => { const k = l.city.tr; if(!groups.has(k)) groups.set(k, []); groups.get(k).push(l); });
+  return [...groups.values()].map(g => `<div class="citygroup"><h3>${esc(L(g[0].city))}<small>${g.length} ${T("libsHere")}</small></h3><div class="rows">${
+    g.map(l => { const n = worksOf(l.id).length;
+      return `<a class="row" href="#lib-${l.id}"><b>${esc(L(l.name))}</b><span class="meta">${l.founded ? esc(L(l.founded)) : ""}${n ? `${l.founded ? " · " : ""}<em>${n} ${n===1?T("work1"):T("works")}</em>` : ""}</span><p>${esc(L(l.desc))}</p></a>`; }).join("")
+  }</div></div>`).join("");
+}
+function viewHome(){
+  const cities = new Map(); LIBRARIES.forEach(l => cities.set(l.city.tr, { c:l.city, n:(cities.get(l.city.tr)?.n||0)+1 }));
+  const feat = WORKS.filter(w => w.unesco).concat(WORKS.filter(w => !w.unesco)).slice(0, 6);
+  const nU = WORKS.filter(w => w.unesco).length;
+  return `<p class="eyebrow">${esc(L(COUNTRIES.TR.name))} · ${LIBRARIES.length} ${T("nLib")}</p>
+  <h1>${T("homeTitle")}</h1><p class="lede">${T("homeLede")}</p>
+  <div class="stats"><span><b>${LIBRARIES.length}</b>${T("nLib")}</span><span><b>${cities.size}</b>${T("nCity")}</span><span><b>${WORKS.length}</b>${T("nWork")}</span><span><b>${nU}</b>${T("nUnesco")}</span></div>
+  <h2>${T("featured")}</h2><div class="grid">${feat.map(workCard).join("")}</div>
+  <h2>${T("allLibs")}</h2>
+  <div class="tools"><input id="q" type="search" value="${esc(state.q)}" placeholder="${esc(T("search"))}" aria-label="${esc(T("search"))}">
+  <div class="chips" id="chips"><button class="chip" data-city="" aria-pressed="${!state.city}">${T("all")}<small>${LIBRARIES.length}</small></button>${
+    [...cities.entries()].map(([k,v]) => `<button class="chip" data-city="${esc(k)}" aria-pressed="${state.city===k}">${esc(L(v.c))}<small>${v.n}</small></button>`).join("")}</div></div>
+  <div id="list">${listHtml()}</div>
+  <div class="about"><h2>${T("about")}</h2><p>${T("aboutText")}</p></div>`;
+}
+function viewLib(l){
+  const ws = worksOf(l.id);
+  return `<a class="back" href="#">← ${T("backAll")}</a>
+  <p class="eyebrow">${esc(L(l.city))} · ${esc(L(COUNTRIES[l.country].name))}</p>
+  <h1>${esc(L(l.name))}</h1>
+  <div class="prose"><p>${esc(L(l.desc))}</p></div>
+  <dl class="facts">
+    ${l.founded ? `<dt>${T("founded")}</dt><dd>${esc(L(l.founded))}</dd>` : ""}
+    ${l.founder ? `<dt>${T("founder")}</dt><dd>${esc(L(l.founder))}</dd>` : ""}
+    <dt>${T("inst")}</dt><dd>${esc(L(l.inst))}</dd>
+    <dt>${T("city")}</dt><dd>${esc(L(l.city))}</dd>
+    ${l.records ? `<dt>${T("records")}</dt><dd>${fmt(l.records)}<small>${T("recordsNote")}</small></dd>` : ""}
+  </dl>
+  <h2>${T("worksHere")}</h2>
+  ${ws.length ? `<div class="grid">${ws.map(workCard).join("")}</div>` : `<div class="empty">${T("noWorks")}</div>`}
+  ${srcList(l.sources)}`;
+}
+function viewWork(w){
+  const l = libById[w.lib];
+  const shelf = lang === "en" && w.shelfEn ? w.shelfEn : w.shelf;
+  return `<a class="back" href="#lib-${l.id}">← ${esc(L(l.name))}</a>
+  <div class="detail"><figure>${plate(w)}<figcaption>${T("plateLong")}</figcaption></figure>
+  <div>
+    <p class="eyebrow">${esc(L(l.short))} · ${esc(L(l.city))}</p>
+    <h1>${esc(L(w.title))}</h1>
+    ${w.orig ? `<p class="orig" lang="ar">${esc(w.orig)}</p>` : ""}
+    ${w.unesco ? `<i class="badge" style="font-style:normal">${T("unesco")} · ${w.unesco}</i>` : ""}
+    <dl class="facts">
+      <dt>${T("author")}</dt><dd>${esc(L(w.author))}</dd>
+      <dt>${T("date")}</dt><dd>${esc(L(w.date))}</dd>
+      <dt>${T("lang")}</dt><dd>${esc(L(w.lang))}</dd>
+      <dt>${T("keptAt")}</dt><dd><a href="#lib-${l.id}">${esc(L(l.name))}</a></dd>
+      <dt>${T("shelf")}</dt><dd><span class="shelf">${esc(shelf)}</span></dd>
+      <dt>${T("copy")}</dt><dd>${esc(L(w.copy))}</dd>
+    </dl>
+    <h2 class="rub">${T("what")}</h2><div class="prose"><p>${esc(L(w.what))}</p></div>
+    <h2 class="rub">${T("why")}</h2><div class="prose"><p>${esc(L(w.why))}</p></div>
+    ${srcList(w.sources)}
+  </div></div>`;
+}
+
+function route(){
+  const h = location.hash.replace(/^#/, "");
+  if(h.startsWith("lib-") && libById[h.slice(4)]) return { t:"lib", lib:libById[h.slice(4)] };
+  if(h.startsWith("work-") && workById[h.slice(5)]) return { t:"work", work:workById[h.slice(5)], lib:libById[workById[h.slice(5)].lib] };
+  return { t:"home" };
+}
+let current = { t:"home" };
+function render(move){
+  current = route();
+  document.documentElement.lang = lang;
+  $("#brandName").textContent = T("brand"); $("#brandTag").textContent = T("brandTag");
+  document.title = T("brand");
+  $("#lang").setAttribute("aria-label", T("langLabel"));
+  $("#lang").innerHTML = COUNTRIES.TR.langs.map(k => `<button type="button" data-lang="${k}" aria-pressed="${k===lang}" title="${LANGS[k].name}">${LANGS[k].label}</button>`).join("");
+  $("#view").innerHTML = current.t === "lib" ? viewLib(current.lib) : current.t === "work" ? viewWork(current.work) : viewHome();
+  $("#grip").setAttribute("aria-label", T("resize"));
+  if(map) map.sync(move);
+}
+function refreshList(){ const el = $("#list"); if(el) el.innerHTML = listHtml(); }
+
+document.addEventListener("click", e => {
+  const lb = e.target.closest("[data-lang]");
+  if(lb){ lang = lb.dataset.lang; store.set("yeh-lang", lang); render(false); return; }
+  const ch = e.target.closest(".chip");
+  if(ch){ state.city = ch.dataset.city || null;
+    document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String((c.dataset.city||null) === state.city)));
+    refreshList(); if(map) map.focusCity(state.city); }
+});
+document.addEventListener("input", e => { if(e.target.id === "q"){ state.q = e.target.value; refreshList(); } });
+window.addEventListener("hashchange", () => { render(true); $("#panel").scrollTop = 0; if(matchMedia("(max-width:820px)").matches) window.scrollTo(0,0); });
+
+/* ---------- ayrılabilir bölme (%30 / %70 varsayılan) ---------- */
+(function(){
+  const split = $("#split"), grip = $("#grip");
+  const set = p => { p = Math.max(20, Math.min(65, p)); split.style.setProperty("--mapw", p + "%"); grip.setAttribute("aria-valuenow", Math.round(p)); store.set("yeh-mapw", String(p)); };
+  const saved = parseFloat(store.get("yeh-mapw")); set(isFinite(saved) ? saved : 30);
+  grip.setAttribute("aria-valuemin", 20); grip.setAttribute("aria-valuemax", 65);
+  grip.addEventListener("pointerdown", e => { grip.setPointerCapture(e.pointerId); grip.classList.add("drag");
+    const mv = ev => set(ev.clientX / split.clientWidth * 100);
+    const up = () => { grip.classList.remove("drag"); grip.removeEventListener("pointermove", mv); grip.removeEventListener("pointerup", up); grip.removeEventListener("pointercancel", up); };
+    grip.addEventListener("pointermove", mv); grip.addEventListener("pointerup", up); grip.addEventListener("pointercancel", up); });
+  grip.addEventListener("keydown", e => { const cur = parseFloat(getComputedStyle(split).getPropertyValue("--mapw")) || 30;
+    if(e.key === "ArrowLeft"){ set(cur - 2); e.preventDefault(); } if(e.key === "ArrowRight"){ set(cur + 2); e.preventDefault(); } });
+})();
+
+/* ---------- harita ---------- */
+let map = null;
+function initMap(){
+  const geo = window.YEH_GEO;
+  const world = topojson.feature(geo.w, geo.w.objects.countries).features;
+  const prov = topojson.feature(geo.t, geo.t.objects.p);
+  const active = new Set(Object.values(COUNTRIES).map(c => c.iso));
+  const svg = d3.select("#map"), col = $("#mapcol"), tip = $("#tip");
+  const proj = d3.geoMercator().fitExtent([[0,0],[1000,460]], prov);
+  const path = d3.geoPath(proj);
+  const g = svg.append("g");
+  g.append("g").selectAll("path").data(world.filter(f => !active.has(String(f.id)))).join("path").attr("class","c").attr("d", path);
+  g.append("g").selectAll("path").data(prov.features).join("path").attr("class","p").attr("d", path)
+    .on("pointermove", (e,d) => showTip(e, d.properties.n)).on("pointerleave", hideTip);
+  const fan = svg.append("g").attr("class","fan");
+  const pins = svg.append("g");
+  const baseK = () => Math.min(W/1000, H/460);
+  const kMax = () => baseK()*30;
+  const pts = LIBRARIES.map(l => ({ l, xy: proj(l.coord) }));
+  const trB = path.bounds(prov), wB = path.bounds({type:"Sphere"});
+  let W = 0, H = 0, tf = d3.zoomIdentity, selId = null, raf = 0, first = true;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const zoom = d3.zoom().on("zoom", e => { tf = e.transform; g.attr("transform", tf); if(!raf) raf = requestAnimationFrame(() => { raf = 0; drawPins(); }); });
+  svg.call(zoom).on("dblclick.zoom", null);
+
+  function showTip(e, text){ const r = col.getBoundingClientRect(); tip.textContent = text; tip.style.left = (e.clientX - r.left) + "px"; tip.style.top = (e.clientY - r.top) + "px"; tip.classList.add("on"); }
+  function hideTip(){ tip.classList.remove("on"); }
+  function go(t, instant){ (instant || reduce ? svg : svg.transition().duration(650)).call(zoom.transform, t); }
+  function fitBox(b, pad, kMax, instant){
+    const w = Math.max(b[1][0]-b[0][0], 1e-6), h = Math.max(b[1][1]-b[0][1], 1e-6);
+    const k = Math.min((W - pad*2)/w, (H - pad*2)/h, kMax || Infinity);
+    go(d3.zoomIdentity.translate(W/2, H/2).scale(k).translate(-(b[0][0]+b[1][0])/2, -(b[0][1]+b[1][1])/2), instant);
+  }
+  function kFor(p){ let dmin = Infinity; pts.forEach(o => { if(o !== p){ const d = Math.hypot(o.xy[0]-p.xy[0], o.xy[1]-p.xy[1]); if(d < dmin) dmin = d; } });
+    return Math.max(baseK()*3.2, Math.min(42/dmin, kMax())); }
+  function flyTo(l){ const p = pts.find(o => o.l === l); const k = kFor(p);
+    go(d3.zoomIdentity.translate(W/2, H*0.46).scale(k).translate(-p.xy[0], -p.xy[1])); }
+
+  function drawPins(){
+    const atMax = tf.k >= kMax()*0.97, R = atMax ? 80 : 24, groups = [];
+    pts.forEach(p => { const x = tf.applyX(p.xy[0]), y = tf.applyY(p.xy[1]);
+      let gr = groups.find(c => Math.hypot(c.x - x, c.y - y) < R);
+      if(gr){ gr.m.push(p); gr.x = (gr.x*(gr.m.length-1) + x)/gr.m.length; gr.y = (gr.y*(gr.m.length-1) + y)/gr.m.length; }
+      else groups.push({ x, y, m:[p] }); });
+    /* En yakın ölçekte hâlâ üst üste binen kütüphaneler bir çember üzerine açılır. */
+    const nodes = [];
+    groups.forEach(c => {
+      if(c.m.length > 1 && atMax){
+        const n = c.m.length, rad = Math.max(40, n*8);
+        const arr = c.m.map(p => ({ p, a: Math.atan2(tf.applyY(p.xy[1]) - c.y, tf.applyX(p.xy[0]) - c.x) })).sort((a,b) => a.a - b.a);
+        arr.forEach((o,i) => { const a = -Math.PI*0.9 + i*2*Math.PI/n;
+          nodes.push({ key:o.p.l.id, x:c.x + Math.cos(a)*rad, y:c.y + Math.sin(a)*rad, ox:c.x, oy:c.y, m:[o.p], fan:true, side:Math.cos(a) >= 0 ? 1 : -1 }); });
+      } else nodes.push({ key:c.m.map(p => p.l.id).join("|"), x:c.x, y:c.y, m:c.m, fan:false, side:1 });
+    });
+    const fl = fan.selectAll("line").data(nodes.filter(d => d.fan), d => d.key);
+    fl.exit().remove();
+    fl.enter().append("line").merge(fl).attr("x1", d => d.ox).attr("y1", d => d.oy).attr("x2", d => d.x).attr("y2", d => d.y);
+    const hubs = [...new Map(nodes.filter(d => d.fan).map(d => [d.ox + "," + d.oy, d])).values()];
+    const fc = fan.selectAll("circle").data(hubs);
+    fc.exit().remove();
+    fc.enter().append("circle").attr("r", 3.5).merge(fc).attr("cx", d => d.ox).attr("cy", d => d.oy);
+
+    const vis = nodes.filter(c => c.x > -60 && c.x < W+60 && c.y > -60 && c.y < H+60);
+    const bk = baseK(), isSel = c => c.m.some(p => p.l.id === selId), rOf = c => c.m.length === 1 ? 6.5 : 10 + Math.min(6, c.m.length*0.6);
+    const sel = pins.selectAll("g.pin").data(vis, c => c.key);
+    sel.exit().remove();
+    const en = sel.enter().append("g").attr("tabindex", 0).attr("role","button");
+    en.append("circle").attr("class","ring"); en.append("circle").attr("class","dot"); en.append("circle").attr("class","hit").attr("r",16).attr("fill","transparent");
+    en.append("text").attr("class","n"); en.append("text").attr("class","lb");
+    const all = en.merge(sel);
+    all.attr("transform", c => `translate(${c.x.toFixed(1)},${c.y.toFixed(1)})`)
+      .attr("class", c => "pin " + (c.m.length === 1 ? (worksOf(c.m[0].l.id).length ? "has" : "none") : "cluster") + (isSel(c) ? " sel" : ""))
+      .attr("aria-label", c => c.m.length === 1 ? L(c.m[0].l.name) : `${c.m.length} ${T("libsHere")}`);
+    all.select(".dot").attr("r", rOf);
+    all.select(".ring").attr("r", c => rOf(c) + 4.5);
+    all.select(".n").text(c => c.m.length > 1 ? c.m.length : "");
+    all.select(".lb").attr("x", c => c.side * (rOf(c) + 6)).attr("y", 4).attr("text-anchor", c => c.side > 0 ? "start" : "end")
+      .text(c => { if(c.m.length === 1){ if(c.fan || isSel(c) || tf.k > bk*8) return L(c.m[0].l.short); return tf.k > bk*1.7 ? L(c.m[0].l.city) : ""; }
+        const same = c.m.every(p => p.l.city.tr === c.m[0].l.city.tr);
+        return (tf.k > bk*1.7 || isSel(c)) && same ? L(c.m[0].l.city) : ""; });
+    all.on("click", (e,c) => act(c)).on("keydown", (e,c) => { if(e.key === "Enter" || e.key === " "){ e.preventDefault(); act(c); } })
+      .on("pointermove", (e,c) => showTip(e, c.m.length === 1 ? L(c.m[0].l.name) : `${c.m.length} ${T("libsHere")}` + (c.m.every(p => p.l.city.tr === c.m[0].l.city.tr) ? " · " + L(c.m[0].l.city) : "")))
+      .on("pointerleave", hideTip);
+  }
+  function act(c){
+    hideTip();
+    if(c.m.length === 1){ location.hash = "lib-" + c.m[0].l.id; return; }
+    const xs = c.m.map(p => p.xy[0]), ys = c.m.map(p => p.xy[1]);
+    fitBox([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], Math.min(W,H)*0.22, kMax());
+  }
+  function size(){
+    const r = col.getBoundingClientRect(); if(!r.width || !r.height) return;
+    const was = W; W = r.width; H = r.height; svg.attr("viewBox", `0 0 ${W} ${H}`);
+    const kMin = Math.min(W/(wB[1][0]-wB[0][0]), H/(wB[1][1]-wB[0][1])) * 0.95;
+    zoom.scaleExtent([kMin, kMax()]).translateExtent([[wB[0][0]-200, wB[0][1]-200],[wB[1][0]+200, wB[1][1]+200]]).extent([[0,0],[W,H]]);
+    if(first){ first = false; if(current.lib){ selId = current.lib.id; const p = pts.find(o => o.l === current.lib); const k = kFor(p); go(d3.zoomIdentity.translate(W/2,H*0.46).scale(k).translate(-p.xy[0],-p.xy[1]), true); } else fitBox(trB, 14, null, true); }
+    else if(was){ go(d3.zoomIdentity.translate(tf.x + (W-was)/2, tf.y).scale(tf.k), true); }
+    drawPins();
+  }
+  new ResizeObserver(size).observe(col); size();
+
+  function controls(){
+    $("#mapctl").innerHTML = `<button type="button" data-z="in" aria-label="${T("zoomIn")}" title="${T("zoomIn")}">+</button><button type="button" data-z="out" aria-label="${T("zoomOut")}" title="${T("zoomOut")}">−</button><button type="button" class="txt" data-z="tr" aria-label="${T("fitTr")}" title="${T("fitTr")}">TR</button><button type="button" class="txt" data-z="w" aria-label="${T("fitWorld")}" title="${T("fitWorld")}"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><ellipse cx="10" cy="10" rx="3.4" ry="7.5"/><path d="M2.5 10h15M3.6 6h12.8M3.6 14h12.8"/></svg></button>`;
+    $("#legend").innerHTML = `<span><i></i>${lang==="tr"?"Eser kaydı olan kütüphane":"Library with work records"}</span><span><i class="o"></i>${lang==="tr"?"Yalnızca kütüphane kaydı":"Library record only"}</span>`;
+    $("#credit").textContent = T("mapData");
+    svg.attr("aria-label", T("mapAria"));
+  }
+  $("#mapctl").addEventListener("click", e => { const b = e.target.closest("[data-z]"); if(!b) return; const z = b.dataset.z;
+    if(z === "in") (reduce ? svg : svg.transition().duration(250)).call(zoom.scaleBy, 1.8);
+    if(z === "out") (reduce ? svg : svg.transition().duration(250)).call(zoom.scaleBy, 1/1.8);
+    if(z === "tr") fitBox(trB, 14);
+    if(z === "w") fitBox(wB, 6); });
+
+  return {
+    sync(move){ controls(); const id = current.lib ? current.lib.id : null; const changed = id !== selId; selId = id; drawPins(); if(move && changed && W){ if(id) flyTo(current.lib); else fitBox(trB, 14); } },
+    focusCity(city){ if(!W) return; if(!city){ fitBox(trB, 14); return; }
+      const m = pts.filter(p => p.l.city.tr === city); const xs = m.map(p => p.xy[0]), ys = m.map(p => p.xy[1]);
+      fitBox([[Math.min(...xs), Math.min(...ys)], [Math.max(...xs), Math.max(...ys)]], Math.min(W,H)*0.22, m.length > 1 ? kMax() : baseK()*4); }
+  };
+}
+
+render(false);
+try { map = initMap(); map.sync(false); }
+catch(err){ $("#mapcol").innerHTML = `<div class="mapfail">${T("mapFail")}</div>`; }
+})();
+</script>
+</body>
+</html>
